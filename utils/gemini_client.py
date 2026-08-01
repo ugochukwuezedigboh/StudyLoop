@@ -189,23 +189,3 @@ Transcript:
 """
     response = _generate(client, model=DEFAULT_MODEL, contents=prompt)
     return response.text.strip()
-
-
-def generate_multiple_choice_questions(transcript: str, num_questions: int, difficulty: str) -> str:
-    """Generates multiple-choice-only practice questions (used by the
-    dedicated 'Multiple choice only' button)."""
-    client = _get_client()
-    prompt = f"""Based on the transcript below, write {num_questions} multiple-choice
-exam-style practice questions at a {difficulty.lower()} difficulty level.
-
-Each question should have 4 labeled options (A-D), with the correct answer
-marked clearly at the end of that question as 'Answer: X'. Number the
-questions. Return only the questions and answers in Markdown — no preamble.
-
-Transcript:
-\"\"\"
-{transcript}
-\"\"\"
-"""
-    response = _generate(client, model=DEFAULT_MODEL, contents=prompt)
-    return response.text.strip()
