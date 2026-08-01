@@ -79,17 +79,6 @@ with st.sidebar:
         st.success("Gemini API connected")
 
     st.divider()
-    st.subheader("Upload document")
-    sidebar_doc = st.file_uploader(
-        "PDF or Word",
-        type=["pdf", "docx"],
-        key="sidebar_doc_upload",
-        help="Upload lecture notes, articles, or handouts in PDF or Word format.",
-    )
-    if sidebar_doc:
-        process_document_upload(sidebar_doc)
-
-    st.divider()
     st.subheader("Question settings")
     num_questions = st.slider("Number of questions", 3, 20, 8)
     q_format = st.selectbox(
@@ -129,16 +118,7 @@ if not gc.is_configured():
 # ---------------------------------------------------------------------------
 st.header("1. Capture the recording")
 
-st.caption("Upload a PDF or Word document directly below, or use the tabs to record or upload audio.")
-direct_doc = st.file_uploader(
-    "Upload a PDF or Word document",
-    type=["pdf", "docx"],
-    key="direct_doc_upload",
-)
-if direct_doc:
-    process_document_upload(direct_doc)
-
-st.divider()
+st.caption("Record in browser, upload an audio file, or upload a document below.")
 
 tab_record, tab_upload, tab_doc = st.tabs([
     "🎙️ Record in browser",
