@@ -226,7 +226,7 @@ if st.session_state["transcript"]:
 # ---------------------------------------------------------------------------
 st.header("3. Generate study material")
 
-gen_col1, gen_col2, gen_col3, gen_col4 = st.columns(4)
+gen_col1, gen_col2, gen_col3 = st.columns(3)
 has_transcript = bool(st.session_state["transcript"].strip())
 
 with gen_col1:
@@ -269,21 +269,6 @@ with gen_col3:
                 )
             except Exception as e:
                 st.error(f"Couldn't generate questions: {e}")
-
-with gen_col4:
-    if st.button(
-        "🅰️ Multiple choice only",
-        disabled=not gc.is_configured() or not has_transcript,
-        use_container_width=True,
-        key="multiple_choice",
-    ):
-        with st.spinner("Generating multiple choice questions..."):
-            try:
-                st.session_state["questions"] = gc.generate_multiple_choice_questions(
-                    st.session_state["transcript"], num_questions, difficulty
-                )
-            except Exception as e:
-                st.error(f"Couldn't generate multiple choice questions: {e}")
 
 if any([st.session_state["summary"], st.session_state["insights"], st.session_state["questions"]]):
     tab_sum, tab_ins, tab_q = st.tabs(["Summary", "Key Insights", "Practice Questions"])
