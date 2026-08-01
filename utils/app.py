@@ -1,11 +1,14 @@
+import mimetypes
 import os
 import tempfile
 from datetime import datetime
+from pathlib import Path
 
 import streamlit as st
 from audio_recorder_streamlit import audio_recorder
 
 from utils import gemini_client as gc
+from utils import document_parser as dp
 from utils import export
 
 st.set_page_config(
@@ -24,11 +27,32 @@ defaults = {
     "questions": "",
     "title": "",
     "audio_bytes": None,
-    "audio_ext": ".wav",
+    "audio_filename": None,
+    "document_filename": None,
 }
 for key, val in defaults.items():
     if key not in st.session_state:
         st.session_state[key] = val
+
+
+def process_document_upload(uploaded_file):
+    if not uploaded_file:
+        return
+
+    try:
+        document_text = dp.extract_document_text(uploaded_file)
+        if not document_text.strip():
+            st.error("The document contains no extractable text.")
+            return
+
+        st.session_state["transcript"] = document_text
+        st.session_state["audio_bytes"] = None
+        st.session_state["audio_filename"] = None
+        st.session_state["document_filename"] = uploaded_file.name
+        st.success("Document text extracted. You can edit it below or generate study material.")
+    except Exception as e:
+        st.error(f"Failed to extract document text: {e}")
+
 
 # ---------------------------------------------------------------------------
 # Sidebar
@@ -84,15 +108,23 @@ st.caption(
 )
 
 if not gc.is_configured():
-    st.warning("👈 Add your Gemini API key in the sidebar to begin.")
-    st.stop()
+    st.warning(
+        "👈 Add your Gemini API key in the sidebar to enable transcription and AI generation. "
+        "You can still upload a document now."
+    )
 
 # ---------------------------------------------------------------------------
 # Step 1 — Capture audio
 # ---------------------------------------------------------------------------
 st.header("1. Capture the recording")
 
-tab_record, tab_upload = st.tabs(["🎙️ Record in browser", "📁 Upload a file"])
+st.caption("Record in browser, upload an audio file, or upload a document below.")
+
+tab_record, tab_upload, tab_doc = st.tabs([
+    "🎙️ Record in browser",
+    "📁 Upload audio file",
+    "📄 Upload document",
+])
 
 with tab_record:
     st.caption("Works on desktop and mobile browsers with microphone access.")
@@ -101,21 +133,41 @@ with tab_record:
         recording_color="#e63946",
         neutral_color="#457b9d",
         icon_size="2x",
+        key="audio_recorder",
     )
     if recorded:
         st.session_state["audio_bytes"] = recorded
-        st.session_state["audio_ext"] = ".wav"
+        st.session_state["audio_filename"] = "recording.wav"
+        st.session_state["document_filename"] = None
         st.audio(recorded, format="audio/wav")
 
 with tab_upload:
     uploaded = st.file_uploader(
         "Upload an audio file",
         type=["mp3", "wav", "m4a", "ogg", "flac", "aac"],
+        key="audio_upload",
     )
     if uploaded:
         st.session_state["audio_bytes"] = uploaded.read()
-        st.session_state["audio_ext"] = os.path.splitext(uploaded.name)[1] or ".wav"
+        st.session_state["audio_filename"] = uploaded.name
+        st.session_state["document_filename"] = None
         st.audio(st.session_state["audio_bytes"])
+
+with tab_doc:
+    doc_file = st.file_uploader(
+        "Upload a PDF or Word document",
+        type=["pdf", "docx"],
+        key="doc_upload",
+    )
+    if doc_file:
+        process_document_upload(doc_file)
+
+if st.session_state["audio_bytes"]:
+    st.success("Audio loaded. Click Transcribe to continue.")
+elif st.session_state["document_filename"]:
+    st.success("Document text loaded. Edit it below or generate study material.")
+else:
+    st.info("First record, upload audio, or upload a document to begin.")
 
 title = st.text_input(
     "Give this recording a title",
@@ -131,29 +183,40 @@ st.header("2. Transcribe")
 
 col_a, col_b = st.columns([1, 3])
 with col_a:
-    transcribe_clicked = st.button(
-        "📝 Transcribe audio",
-        type="primary",
-        disabled=not st.session_state["audio_bytes"],
-        use_container_width=True,
-    )
+    if st.session_state["audio_bytes"]:
+        transcribe_clicked = st.button(
+            "📝 Transcribe audio",
+            type="primary",
+            key="transcribe_button",
+            use_container_width=True,
+            disabled=not gc.is_configured(),
+        )
+    else:
+        transcribe_clicked = False
 
-if transcribe_clicked and st.session_state["audio_bytes"]:
-    with st.spinner("Transcribing — this can take a moment for longer recordings..."):
-        try:
-            suffix = st.session_state.get("audio_ext", ".wav")
-            with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-                tmp.write(st.session_state["audio_bytes"])
-                tmp_path = tmp.name
-            st.session_state["transcript"] = gc.transcribe_audio(tmp_path)
-            os.unlink(tmp_path)
-            st.success("Transcription complete.")
-        except Exception as e:
-            st.error(f"Transcription failed: {e}")
+if st.session_state["audio_bytes"]:
+    if transcribe_clicked:
+        with st.spinner("Transcribing — this can take a moment for longer recordings..."):
+            try:
+                suffix = Path(st.session_state.get("audio_filename", "recording.wav")).suffix or ".wav"
+                with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+                    tmp.write(st.session_state["audio_bytes"])
+                    tmp_path = tmp.name
+                mime_type, _ = mimetypes.guess_type(tmp_path)
+                st.session_state["transcript"] = gc.transcribe_audio(tmp_path, mime_type=mime_type)
+                os.unlink(tmp_path)
+                st.success("Transcription complete.")
+            except Exception as e:
+                st.error(f"Transcription failed: {e}")
+else:
+    if st.session_state["document_filename"] and not st.session_state["transcript"]:
+        st.info("Document text has been loaded; skip transcription and generate study material below.")
+    elif not st.session_state["document_filename"]:
+        st.info("Upload audio or a document to begin.")
 
 if st.session_state["transcript"]:
     st.session_state["transcript"] = st.text_area(
-        "Transcript (editable — fix any errors before generating notes)",
+        "Transcript / document text (editable — fix any errors before generating notes)",
         value=st.session_state["transcript"],
         height=220,
     )
@@ -167,7 +230,12 @@ gen_col1, gen_col2, gen_col3 = st.columns(3)
 has_transcript = bool(st.session_state["transcript"].strip())
 
 with gen_col1:
-    if st.button("📋 Summary", disabled=not has_transcript, use_container_width=True):
+    if st.button(
+        "📋 Summary",
+        disabled=not gc.is_configured() or not has_transcript,
+        use_container_width=True,
+        key="summary_button",
+    ):
         with st.spinner("Summarizing..."):
             try:
                 st.session_state["summary"] = gc.generate_summary(st.session_state["transcript"])
@@ -175,7 +243,12 @@ with gen_col1:
                 st.error(f"Couldn't generate summary: {e}")
 
 with gen_col2:
-    if st.button("💡 Key insights", disabled=not has_transcript, use_container_width=True):
+    if st.button(
+        "💡 Key insights",
+        disabled=not gc.is_configured() or not has_transcript,
+        use_container_width=True,
+        key="insights_button",
+    ):
         with st.spinner("Pulling out key insights..."):
             try:
                 st.session_state["insights"] = gc.generate_insights(st.session_state["transcript"])
@@ -183,7 +256,12 @@ with gen_col2:
                 st.error(f"Couldn't generate insights: {e}")
 
 with gen_col3:
-    if st.button("❓ Practice questions", disabled=not has_transcript, use_container_width=True):
+    if st.button(
+        "❓ Practice questions",
+        disabled=not gc.is_configured() or not has_transcript,
+        use_container_width=True,
+        key="practice_questions",
+    ):
         with st.spinner("Writing practice questions..."):
             try:
                 st.session_state["questions"] = gc.generate_questions(
