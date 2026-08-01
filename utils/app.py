@@ -134,6 +134,7 @@ with tab_record:
         neutral_color="#457b9d",
         icon_size="2x",
         key="audio_recorder",
+        pause_threshold=60.0,
     )
     if recorded:
         st.session_state["audio_bytes"] = recorded
