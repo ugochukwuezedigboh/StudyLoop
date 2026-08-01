@@ -13,11 +13,12 @@ import os
 import time
 import streamlit as st
 from google import genai
+from google.genai import errors as genai_errors
 from dotenv import load_dotenv
 
 load_dotenv()
 
-DEFAULT_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+DEFAULT_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
 
 
 def get_api_key() -> str | None:
@@ -50,6 +51,24 @@ def _get_client() -> genai.Client:
     return genai.Client(api_key=api_key)
 
 
+def _generate(client: genai.Client, **kwargs):
+    """Wraps client.models.generate_content with a clearer error message for
+    the common case where Google has retired the configured model — this
+    happens fairly often, since Google has been deprecating Gemini models
+    quickly throughout 2026."""
+    try:
+        return client.models.generate_content(**kwargs)
+    except genai_errors.ClientError as e:
+        if getattr(e, "code", None) == 404:
+            raise RuntimeError(
+                f"The model '{kwargs.get('model')}' is no longer available from "
+                "Google. Set GEMINI_MODEL to a currently supported model (check "
+                "https://ai.google.dev/gemini-api/docs/models for the current list) "
+                "in your .env file or Streamlit secrets."
+            ) from e
+        raise
+
+
 def transcribe_audio(file_path: str, mime_type: str | None = None) -> str:
     """Upload an audio file to Gemini and return a clean transcript."""
     client = _get_client()
@@ -72,10 +91,7 @@ def transcribe_audio(file_path: str, mime_type: str | None = None) -> str:
         "etc). Do not summarize, do not add commentary — just the transcript, "
         "cleaned of filler sounds like 'um' and 'uh' but keeping the actual words."
     )
-    response = client.models.generate_content(
-        model=DEFAULT_MODEL,
-        contents=[prompt, audio_file],
-    )
+    response = _generate(client, model=DEFAULT_MODEL, contents=[prompt, audio_file])
 
     try:
         client.files.delete(name=audio_file.name)
@@ -107,7 +123,7 @@ Transcript:
 {transcript}
 \"\"\"
 """
-    response = client.models.generate_content(model=DEFAULT_MODEL, contents=prompt)
+    response = _generate(client, model=DEFAULT_MODEL, contents=prompt)
     return response.text.strip()
 
 
@@ -130,7 +146,7 @@ Transcript:
 {transcript}
 \"\"\"
 """
-    response = client.models.generate_content(model=DEFAULT_MODEL, contents=prompt)
+    response = _generate(client, model=DEFAULT_MODEL, contents=prompt)
     return response.text.strip()
 
 
@@ -171,25 +187,5 @@ Transcript:
 {transcript}
 \"\"\"
 """
-    response = client.models.generate_content(model=DEFAULT_MODEL, contents=prompt)
-    return response.text.strip()
-
-
-def generate_multiple_choice_questions(transcript: str, num_questions: int, difficulty: str) -> str:
-    """Generates multiple-choice-only practice questions (used by the
-    dedicated 'Multiple choice only' button)."""
-    client = _get_client()
-    prompt = f"""Based on the transcript below, write {num_questions} multiple-choice
-exam-style practice questions at a {difficulty.lower()} difficulty level.
-
-Each question should have 4 labeled options (A-D), with the correct answer
-marked clearly at the end of that question as 'Answer: X'. Number the
-questions. Return only the questions and answers in Markdown — no preamble.
-
-Transcript:
-\"\"\"
-{transcript}
-\"\"\"
-"""
-    response = client.models.generate_content(model=DEFAULT_MODEL, contents=prompt)
+    response = _generate(client, model=DEFAULT_MODEL, contents=prompt)
     return response.text.strip()
