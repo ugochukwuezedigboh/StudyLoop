@@ -50,10 +50,13 @@ def _get_client() -> genai.Client:
     return genai.Client(api_key=api_key)
 
 
-def transcribe_audio(file_path: str) -> str:
+def transcribe_audio(file_path: str, mime_type: str | None = None) -> str:
     """Upload an audio file to Gemini and return a clean transcript."""
     client = _get_client()
-    audio_file = client.files.upload(file=file_path)
+    if mime_type:
+        audio_file = client.files.upload(file=file_path, config={"mime_type": mime_type})
+    else:
+        audio_file = client.files.upload(file=file_path)
 
     # Wait for the file to finish processing on Google's side.
     while audio_file.state == "PROCESSING":
@@ -162,6 +165,26 @@ practice questions at a {difficulty.lower()} difficulty level, formatted as: {q_
 
 Number the questions. Return only the questions and answers in Markdown —
 no preamble.
+
+Transcript:
+\"\"\"
+{transcript}
+\"\"\"
+"""
+    response = client.models.generate_content(model=DEFAULT_MODEL, contents=prompt)
+    return response.text.strip()
+
+
+def generate_multiple_choice_questions(transcript: str, num_questions: int, difficulty: str) -> str:
+    """Generates multiple-choice-only practice questions (used by the
+    dedicated 'Multiple choice only' button)."""
+    client = _get_client()
+    prompt = f"""Based on the transcript below, write {num_questions} multiple-choice
+exam-style practice questions at a {difficulty.lower()} difficulty level.
+
+Each question should have 4 labeled options (A-D), with the correct answer
+marked clearly at the end of that question as 'Answer: X'. Number the
+questions. Return only the questions and answers in Markdown — no preamble.
 
 Transcript:
 \"\"\"
