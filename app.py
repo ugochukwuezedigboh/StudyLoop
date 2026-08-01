@@ -24,6 +24,7 @@ defaults = {
     "questions": "",
     "title": "",
     "audio_bytes": None,
+    "audio_ext": ".wav",
 }
 for key, val in defaults.items():
     if key not in st.session_state:
@@ -103,6 +104,7 @@ with tab_record:
     )
     if recorded:
         st.session_state["audio_bytes"] = recorded
+        st.session_state["audio_ext"] = ".wav"
         st.audio(recorded, format="audio/wav")
 
 with tab_upload:
@@ -112,6 +114,7 @@ with tab_upload:
     )
     if uploaded:
         st.session_state["audio_bytes"] = uploaded.read()
+        st.session_state["audio_ext"] = os.path.splitext(uploaded.name)[1] or ".wav"
         st.audio(st.session_state["audio_bytes"])
 
 title = st.text_input(
@@ -138,7 +141,8 @@ with col_a:
 if transcribe_clicked and st.session_state["audio_bytes"]:
     with st.spinner("Transcribing — this can take a moment for longer recordings..."):
         try:
-            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+            suffix = st.session_state.get("audio_ext", ".wav")
+            with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
                 tmp.write(st.session_state["audio_bytes"])
                 tmp_path = tmp.name
             st.session_state["transcript"] = gc.transcribe_audio(tmp_path)
