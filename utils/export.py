@@ -53,4 +53,4 @@ def build_pdf(title: str, transcript: str, summary: str, insights: str, question
         pdf.multi_cell(0, 6, clean)
         pdf.ln(4)
 
-    return bytes(pdf.output(dest="S"))
+    return bytes(pdf.output())
