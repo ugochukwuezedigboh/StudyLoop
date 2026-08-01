@@ -1,12 +1,18 @@
 """
 Handles Gemini API configuration and the low-level calls used across the app:
 audio transcription, summarization, insight extraction, and question generation.
+
+Uses the current `google-genai` SDK, which supports both the legacy
+AIza... "Standard" key format and the newer AQ.Ab... "Auth" key format
+that Google AI Studio issues as of mid-2026. The older `google-generativeai`
+package this originally used has been fully deprecated by Google and does
+not support the new key format.
 """
 
 import os
 import time
 import streamlit as st
-import google.generativeai as genai
+from google import genai
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -34,41 +40,42 @@ def is_configured() -> bool:
     return bool(get_api_key())
 
 
-def _get_model():
+def _get_client() -> genai.Client:
     api_key = get_api_key()
     if not api_key:
         raise RuntimeError(
             "No Gemini API key found. Add one in the sidebar, or set "
             "GEMINI_API_KEY in a .env file / Streamlit secrets."
         )
-    genai.configure(api_key=api_key)
-    return genai.GenerativeModel(DEFAULT_MODEL)
+    return genai.Client(api_key=api_key)
 
 
 def transcribe_audio(file_path: str) -> str:
     """Upload an audio file to Gemini and return a clean transcript."""
-    genai.configure(api_key=get_api_key())
-    audio_file = genai.upload_file(path=file_path)
+    client = _get_client()
+    audio_file = client.files.upload(file=file_path)
 
     # Wait for the file to finish processing on Google's side.
-    while audio_file.state.name == "PROCESSING":
+    while audio_file.state == "PROCESSING":
         time.sleep(1.5)
-        audio_file = genai.get_file(audio_file.name)
+        audio_file = client.files.get(name=audio_file.name)
 
-    if audio_file.state.name == "FAILED":
+    if audio_file.state == "FAILED":
         raise RuntimeError("Audio upload failed processing on Gemini's side.")
 
-    model = _get_model()
     prompt = (
         "Transcribe this recording word-for-word. Add speaker labels only if "
         "multiple distinct speakers are clearly audible (Speaker 1, Speaker 2, "
         "etc). Do not summarize, do not add commentary — just the transcript, "
         "cleaned of filler sounds like 'um' and 'uh' but keeping the actual words."
     )
-    response = model.generate_content([prompt, audio_file])
+    response = client.models.generate_content(
+        model=DEFAULT_MODEL,
+        contents=[prompt, audio_file],
+    )
 
     try:
-        genai.delete_file(audio_file.name)
+        client.files.delete(name=audio_file.name)
     except Exception:
         pass
 
@@ -76,7 +83,7 @@ def transcribe_audio(file_path: str) -> str:
 
 
 def generate_summary(transcript: str) -> str:
-    model = _get_model()
+    client = _get_client()
     prompt = f"""You are helping a student review a lecture or meeting recording.
 Read the transcript below and produce a clear, well-organized summary in Markdown.
 
@@ -97,11 +104,12 @@ Transcript:
 {transcript}
 \"\"\"
 """
-    return model.generate_content(prompt).text.strip()
+    response = client.models.generate_content(model=DEFAULT_MODEL, contents=prompt)
+    return response.text.strip()
 
 
 def generate_insights(transcript: str) -> str:
-    model = _get_model()
+    client = _get_client()
     prompt = f"""Read the transcript below and pull out the key insights a student
 would want to remember. Return Markdown with:
 
@@ -119,11 +127,12 @@ Transcript:
 {transcript}
 \"\"\"
 """
-    return model.generate_content(prompt).text.strip()
+    response = client.models.generate_content(model=DEFAULT_MODEL, contents=prompt)
+    return response.text.strip()
 
 
 def generate_questions(transcript: str, num_questions: int, q_format: str, difficulty: str) -> str:
-    model = _get_model()
+    client = _get_client()
 
     format_instructions = {
         "Multiple choice": (
@@ -159,4 +168,5 @@ Transcript:
 {transcript}
 \"\"\"
 """
-    return model.generate_content(prompt).text.strip()
+    response = client.models.generate_content(model=DEFAULT_MODEL, contents=prompt)
+    return response.text.strip()
