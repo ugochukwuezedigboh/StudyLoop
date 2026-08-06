@@ -5,7 +5,6 @@ from datetime import datetime
 from pathlib import Path
 
 import streamlit as st
-from audio_recorder_streamlit import audio_recorder
 
 from utils import gemini_client as gc
 from utils import document_parser as dp
@@ -128,18 +127,15 @@ tab_record, tab_upload, tab_doc = st.tabs([
 
 with tab_record:
     st.caption("Works on desktop and mobile browsers with microphone access.")
-    recorded = audio_recorder(
-        text="Click to record",
-        recording_color="#e63946",
-        neutral_color="#457b9d",
-        icon_size="2x",
+    recorded = st.audio_input(
+        "Record a lecture or meeting",
         key="audio_recorder",
     )
     if recorded:
-        st.session_state["audio_bytes"] = recorded
+        st.session_state["audio_bytes"] = recorded.getvalue()
         st.session_state["audio_filename"] = "recording.wav"
         st.session_state["document_filename"] = None
-        st.audio(recorded, format="audio/wav")
+        st.audio(st.session_state["audio_bytes"], format="audio/wav")
 
 with tab_upload:
     uploaded = st.file_uploader(
