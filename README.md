@@ -77,7 +77,7 @@ lecture-notes-ai/
 ## Notes on the MVP scope
 
 - Transcription and all generation calls go through a single Gemini model
-  (`gemini-2.0-flash` by default, configurable via `GEMINI_MODEL` in `.env`)
+  (`gemini-3.6-flash` by default, configurable via `GEMINI_MODEL` in `.env`)
   — it's free-tier friendly and handles audio input directly, so there's no
   separate speech-to-text service to wire up.
 - The transcript is editable before generating notes, so small
