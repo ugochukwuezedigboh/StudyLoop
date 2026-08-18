@@ -9,6 +9,13 @@ import streamlit as st
 from utils import gemini_client as gc
 from utils import document_parser as dp
 from utils import export
+from monetization import (
+       init_db, login_block, check_usage_limit,
+       log_usage, show_upgrade_button
+   )
+
+   init_db()
+   user_email = login_block()
 
 st.set_page_config(
     page_title="StudyLoop — Lecture & Meeting Notes AI",
