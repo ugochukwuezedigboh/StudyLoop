@@ -9,13 +9,14 @@ import streamlit as st
 from utils import gemini_client as gc
 from utils import document_parser as dp
 from utils import export
-from monetization import (
-       init_db, login_block, check_usage_limit,
-       log_usage, show_upgrade_button
-   )
 
-   init_db()
-   user_email = login_block()
+from monetization import (
+    init_db, login_block, check_usage_limit,
+    log_usage, show_upgrade_button
+)
+
+init_db()
+user_email = login_block()
 
 st.set_page_config(
     page_title="StudyLoop — Lecture & Meeting Notes AI",
@@ -56,6 +57,7 @@ def process_document_upload(uploaded_file):
         st.session_state["audio_filename"] = None
         st.session_state["document_filename"] = uploaded_file.name
         st.success("Document text extracted. You can edit it below or generate study material.")
+        log_usage(user_email)
     except Exception as e:
         st.error(f"Failed to extract document text: {e}")
 
@@ -118,6 +120,13 @@ if not gc.is_configured():
         "👈 Add your Gemini API key in the sidebar to enable transcription and AI generation. "
         "You can still upload a document now."
     )
+
+# ---------------------------------------------------------------------------
+# Paywall check — stops here if the user is out of free usage this month
+# ---------------------------------------------------------------------------
+if not check_usage_limit(user_email):
+    show_upgrade_button(user_email)
+    st.stop()
 
 # ---------------------------------------------------------------------------
 # Step 1 — Capture audio
@@ -208,6 +217,7 @@ if st.session_state["audio_bytes"]:
                 mime_type, _ = mimetypes.guess_type(tmp_path)
                 st.session_state["transcript"] = gc.transcribe_audio(tmp_path, mime_type=mime_type)
                 os.unlink(tmp_path)
+                log_usage(user_email)
                 st.success("Transcription complete.")
             except Exception as e:
                 st.error(f"Transcription failed: {e}")
