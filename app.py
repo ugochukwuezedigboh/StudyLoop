@@ -171,7 +171,7 @@ with tab_doc:
         type=["pdf", "docx"],
         key="doc_upload",
     )
-    if doc_file:
+    if doc_file and doc_file.name != st.session_state.get("document_filename"):
         process_document_upload(doc_file)
 
 if st.session_state["audio_bytes"]:
