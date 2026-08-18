@@ -8,19 +8,21 @@ one browser tab, on any device.
 
 ## What it does
 
-1. **Capture** — record straight from the browser mic, or upload an audio
-   file (mp3/wav/m4a/ogg/flac/aac).
-2. **Transcribe** — sends the audio to Gemini and returns an editable,
+1. **Sign up / log in** — each user has their own account, so their usage
+   is tracked individually.
+2. **Capture** — record straight from the browser mic, or upload an audio
+   file (mp3/wav/m4a/ogg/flac/aac), or upload a PDF/Word document.
+3. **Transcribe** — sends the audio to Gemini and returns an editable,
    cleaned-up transcript.
-3. **Generate**
+4. **Generate**
    - **Summary** — overview, main points, action items.
    - **Key insights** — core concepts, important details, likely exam points.
    - **Practice questions** — multiple choice, short answer, essay, or a mix,
      with adjustable count and difficulty.
-4. **Export** — download the whole study pack as Markdown or PDF.
+5. **Export** — download the whole study pack as Markdown or PDF.
 
-Nothing is stored server-side — everything lives in the browser session and
-is gone once you close the tab, so encourage downloading before leaving.
+Free accounts get a limited number of sessions per month; once that's used
+up, the app prompts an upgrade to Premium for unlimited use.
 
 **Live demo:** _add your Streamlit Cloud URL here once deployed_
 
@@ -36,16 +38,21 @@ is gone once you close the tab, so encourage downloading before leaving.
 git clone <your-repo-url>
 cd lecture-notes-ai
 pip install -r requirements.txt
-
 cp .env.example .env
 # then edit .env and paste in a free key from https://aistudio.google.com/apikey
-
 streamlit run app.py
 ```
 
 Open the local URL Streamlit prints (usually `http://localhost:8501`).
-Alternatively, skip the `.env` file entirely and paste the API key directly
-into the sidebar when the app loads — it's kept only in that browser session.
+
+Alternatively, skip the `.env` file entirely and paste the Gemini API key
+directly into the sidebar when the app loads — it's kept only in that
+browser session.
+
+For local testing of accounts and the paywall, also add your Supabase and
+Paystack keys (see **Accounts, usage limits & payments** below) to
+`.streamlit/secrets.toml`. Make sure that file is listed in `.gitignore` so
+it never gets pushed to GitHub.
 
 ## Deploy for free (so it's reachable from any device)
 
@@ -57,15 +64,36 @@ The easiest path, matching the stack this was built for:
 3. In the app's **Settings → Secrets**, add:
    ```toml
    GEMINI_API_KEY = "your_key_here"
+   SUPABASE_URL = "your_supabase_project_url"
+   SUPABASE_KEY = "your_supabase_secret_key"
+   PAYSTACK_SECRET_KEY = "your_paystack_secret_key"
    ```
 4. Once deployed, the app is reachable from any phone, tablet, or laptop
    browser at the streamlit.app URL — no install needed.
+
+## Accounts, usage limits & payments
+
+StudyLoop uses a lightweight freemium model:
+
+- **Accounts** — email/password sign-up and login, backed by a
+  [Supabase](https://supabase.com) Postgres database (hosted, so data
+  persists across redeploys — unlike SQLite on Streamlit Cloud).
+- **Usage tracking** — each recording, upload, or transcription counts as
+  one session for that month; free accounts get a set number of sessions
+  before hitting the paywall.
+- **Payments** — upgrading to Premium runs through
+  [Paystack](https://paystack.com); once payment is verified, the account
+  is flagged premium and the monthly cap no longer applies.
+
+This logic lives in `monetization.py`, which is imported at the top of
+`app.py` and wraps the recording/upload flow with a usage check.
 
 ## Project structure
 
 ```
 lecture-notes-ai/
 ├── app.py                  # Streamlit UI and page flow
+├── monetization.py          # Accounts, usage tracking, paywall, Paystack payments
 ├── utils/
 │   ├── gemini_client.py    # Gemini API calls: transcribe, summarize, insights, questions
 │   └── export.py           # Markdown / PDF study-pack export
@@ -83,7 +111,10 @@ lecture-notes-ai/
 - The transcript is editable before generating notes, so small
   transcription errors (names, jargon) can be fixed before they propagate
   into the summary and questions.
-- Natural next steps if you extend this past MVP: persistent storage per
-  user (so recordings survive a page refresh), multi-recording history,
-  spaced-repetition scheduling for the generated questions, and speaker
-  diarization for multi-person meetings.
+- Accounts and usage tracking are intentionally simple (email/password with
+  hashed passwords, no email verification or password reset flow yet).
+- Natural next steps if you extend this past MVP: persistent storage of
+  each user's recordings and generated notes (not just usage counts),
+  multi-recording history, spaced-repetition scheduling for the generated
+  questions, speaker diarization for multi-person meetings, and a proper
+  password reset flow.
