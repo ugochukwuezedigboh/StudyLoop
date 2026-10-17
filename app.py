@@ -1,6 +1,7 @@
 import mimetypes
 import os
 import tempfile
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -60,6 +61,45 @@ def process_document_upload(uploaded_file):
         log_usage(user_email)
     except Exception as e:
         st.error(f"Failed to extract document text: {e}")
+
+
+def friendly_gemini_error(e: Exception, action: str) -> str:
+    """Turn Gemini's raw errors into a message a user can act on."""
+    msg = str(e)
+    if "429" in msg or "RESOURCE_EXHAUSTED" in msg:
+        return (
+            f"Couldn't {action} — you've hit your Gemini API key's daily free-tier limit. "
+            "This resets automatically at midnight Pacific Time, or you can raise the limit "
+            "immediately by enabling billing on your key at "
+            "[aistudio.google.com/apikey](https://aistudio.google.com/apikey) "
+            "(billing unlocks a much higher limit for a very small pay-as-you-go cost)."
+        )
+    if "503" in msg or "UNAVAILABLE" in msg:
+        return (
+            f"Couldn't {action} — Google's Gemini model is temporarily overloaded with "
+            "requests from everyone using it, not just you. This already retried a few "
+            "times automatically; it usually clears up within a minute. Please try again shortly."
+        )
+    return f"Couldn't {action}: {e}"
+
+
+def call_with_retry(fn, *args, max_retries=3, **kwargs):
+    """
+    Retry a Gemini call a few times (with a short backoff) if the model is
+    temporarily overloaded (503 UNAVAILABLE). Other errors are raised right away.
+    """
+    last_error = None
+    for attempt in range(max_retries):
+        try:
+            return fn(*args, **kwargs)
+        except Exception as e:
+            msg = str(e)
+            if "503" in msg or "UNAVAILABLE" in msg:
+                last_error = e
+                time.sleep(2 ** attempt)  # 1s, then 2s, then 4s
+                continue
+            raise
+    raise last_error
 
 
 # ---------------------------------------------------------------------------
@@ -171,7 +211,7 @@ with tab_doc:
         type=["pdf", "docx"],
         key="doc_upload",
     )
-    if doc_file and doc_file.name != st.session_state.get("document_filename"):
+    if doc_file:
         process_document_upload(doc_file)
 
 if st.session_state["audio_bytes"]:
@@ -215,12 +255,12 @@ if st.session_state["audio_bytes"]:
                     tmp.write(st.session_state["audio_bytes"])
                     tmp_path = tmp.name
                 mime_type, _ = mimetypes.guess_type(tmp_path)
-                st.session_state["transcript"] = gc.transcribe_audio(tmp_path, mime_type=mime_type)
+                st.session_state["transcript"] = call_with_retry(gc.transcribe_audio, tmp_path, mime_type=mime_type)
                 os.unlink(tmp_path)
                 log_usage(user_email)
                 st.success("Transcription complete.")
             except Exception as e:
-                st.error(f"Transcription failed: {e}")
+                st.error(friendly_gemini_error(e, "transcribe this recording"))
 else:
     if st.session_state["document_filename"] and not st.session_state["transcript"]:
         st.info("Document text has been loaded; skip transcription and generate study material below.")
@@ -251,9 +291,9 @@ with gen_col1:
     ):
         with st.spinner("Summarizing..."):
             try:
-                st.session_state["summary"] = gc.generate_summary(st.session_state["transcript"])
+                st.session_state["summary"] = call_with_retry(gc.generate_summary, st.session_state["transcript"])
             except Exception as e:
-                st.error(f"Couldn't generate summary: {e}")
+                st.error(friendly_gemini_error(e, "generate the summary"))
 
 with gen_col2:
     if st.button(
@@ -264,9 +304,9 @@ with gen_col2:
     ):
         with st.spinner("Pulling out key insights..."):
             try:
-                st.session_state["insights"] = gc.generate_insights(st.session_state["transcript"])
+                st.session_state["insights"] = call_with_retry(gc.generate_insights, st.session_state["transcript"])
             except Exception as e:
-                st.error(f"Couldn't generate insights: {e}")
+                st.error(friendly_gemini_error(e, "generate key insights"))
 
 with gen_col3:
     if st.button(
@@ -277,11 +317,12 @@ with gen_col3:
     ):
         with st.spinner("Writing practice questions..."):
             try:
-                st.session_state["questions"] = gc.generate_questions(
+                st.session_state["questions"] = call_with_retry(
+                    gc.generate_questions,
                     st.session_state["transcript"], num_questions, q_format, difficulty
                 )
             except Exception as e:
-                st.error(f"Couldn't generate questions: {e}")
+                st.error(friendly_gemini_error(e, "generate practice questions"))
 
 if any([st.session_state["summary"], st.session_state["insights"], st.session_state["questions"]]):
     tab_sum, tab_ins, tab_q = st.tabs(["Summary", "Key Insights", "Practice Questions"])
