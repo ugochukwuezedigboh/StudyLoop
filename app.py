@@ -19,6 +19,14 @@ from monetization import (
 init_db()
 user_email = login_block()
 
+# Use a single Gemini key you control for every user, instead of asking
+# each person to paste in their own. This way, your Supabase/Paystack
+# paywall is the only usage limit anyone ever runs into.
+if "gemini_api_key" not in st.session_state:
+    st.session_state["gemini_api_key"] = st.secrets.get(
+        "GEMINI_API_KEY", os.environ.get("GEMINI_API_KEY", "")
+    )
+
 st.set_page_config(
     page_title="StudyLoop — Lecture & Meeting Notes AI",
     page_icon="🎓",
@@ -110,23 +118,6 @@ with st.sidebar:
     st.caption("Record it. Understand it. Get quizzed on it.")
 
     st.divider()
-    st.subheader("Setup")
-
-    if not gc.is_configured():
-        key_input = st.text_input(
-            "Gemini API key",
-            type="password",
-            help="Get a free key at https://aistudio.google.com/apikey. "
-                 "Not stored anywhere except this browser session.",
-        )
-        if key_input:
-            st.session_state["gemini_api_key"] = key_input
-            st.rerun()
-        st.info("Add a Gemini API key to get started.")
-    else:
-        st.success("Gemini API connected")
-
-    st.divider()
     st.subheader("Question settings")
     num_questions = st.slider("Number of questions", 3, 20, 8)
     q_format = st.selectbox(
@@ -156,9 +147,9 @@ st.caption(
 )
 
 if not gc.is_configured():
-    st.warning(
-        "👈 Add your Gemini API key in the sidebar to enable transcription and AI generation. "
-        "You can still upload a document now."
+    st.error(
+        "⚠️ The AI engine isn't configured right now. "
+        "(For the app owner: add GEMINI_API_KEY to your Streamlit secrets.)"
     )
 
 # ---------------------------------------------------------------------------
